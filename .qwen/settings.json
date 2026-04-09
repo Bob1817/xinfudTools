@@ -37,7 +37,9 @@
       "Bash(pyinstaller *)",
       "Bash(cp *)",
       "Bash(ln *)",
-      "Bash(hdiutil *)"
+      "Bash(hdiutil *)",
+      "Bash(git rm *)",
+      "Bash(echo *)"
     ]
   },
   "$version": 3

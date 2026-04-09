@@ -2,10 +2,9 @@
 
 ## 📦 下载
 
-| 平台 | 文件 | 大小 |
+| 平台 | 安装包 | 大小 |
 |------|------|------|
-| macOS (Apple Silicon) | HR数据处理工具集-v1.0.0-mac.dmg | ~478MB |
-| Windows | HR数据处理工具集-v1.0.0-windows.exe | 待构建 |
+| Windows 10/11 | HR数据处理工具集-v1.0.0-windows.exe | 待构建 |
 
 ## ✨ 功能特性
 
@@ -34,21 +33,23 @@
 
 ## 🔧 安装方法
 
-### macOS
-1. 双击 `HR数据处理工具集-v1.0.0-mac.dmg`
-2. 将应用拖拽到 Applications 文件夹
-3. 从 Launchpad 或 Applications 运行
-
-### Windows（待构建）
-1. 双击安装程序
+### Windows
+1. 双击 `HR数据处理工具集-v1.0.0-windows.exe`
 2. 按照安装向导提示完成安装
 3. 从开始菜单或桌面快捷方式运行
 
+### macOS（开发环境）
+```bash
+cd xinfudTools
+pip install -r requirements.txt
+python3 main.py
+```
+
 ## 📋 系统要求
 
-- **macOS**: 12.0+ (Monterey 或更高)
 - **Windows**: 10/11 (64位)
-- **架构**: Apple Silicon (M1/M2/M3)
+- **macOS**: 12.0+ (开发环境)
+- **Python**: 3.10+
 
 ## 🐛 已知问题
 
