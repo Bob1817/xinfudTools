@@ -1,0 +1,11 @@
+# 更新配置文件示例
+# 此文件用于 Gitee/GitHub Release 页面
+# 当创建新的 Release 时，系统会自动读取这些信息
+
+{
+  "tag_name": "v1.1.0",
+  "name": "v1.1.0 - 功能优化版",
+  "body": "## 更新内容\n\n### 新增功能\n- 新增自动更新功能\n- 支持检查 Gitee 和 GitHub 最新版本\n- 启动时自动提示更新\n\n### 优化改进\n- 优化 UI 界面，使用 Fluent Design 风格\n- 改进文件处理性能\n- 修复已知 Bug\n\n### 下载链接\n- macOS: 下载 .dmg 或 .app 文件\n- Windows: 下载 .exe 文件\n- 源代码: 下载 Source code (zip)",
+  "draft": false,
+  "prerelease": false
+}

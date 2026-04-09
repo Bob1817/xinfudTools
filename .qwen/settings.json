@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm *)",
+      "Bash(python3 *)",
+      "Bash(kill *)",
+      "Bash(pkill *)",
+      "Bash(pip install *)",
+      "Bash(pip uninstall *)",
+      "Bash(git init)",
+      "Bash(git remote *)",
+      "Bash(git add *)"
+    ]
+  },
+  "$version": 3
+}
