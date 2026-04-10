@@ -48,6 +48,10 @@ jobs:
             --hidden-import="qfluentwidgets" `
             --hidden-import="pandas" `
             --hidden-import="openpyxl" `
+            --hidden-import="pytz" `
+            --hidden-import="dateutil" `
+            --hidden-import="lxml" `
+            --hidden-import="numpy" `
             main.py
         shell: pwsh
 

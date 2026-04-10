@@ -82,47 +82,55 @@ class GenerateWorker(QThread):
         import sys
         import traceback
         import datetime
-        
-        # 日志文件路径，用于排查打包后的崩溃问题
-        log_dir = Path.home() / "Documents"
-        log_file = log_dir / "HR_Tools_Error.log"
-        
+        import os
+
+        # 调试日志路径：保存到桌面，确保即使安装后也能找到
+        desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+        if not os.path.exists(desktop):
+            desktop = os.path.expanduser("~")
+        log_file = os.path.join(desktop, "HR_Tools_Crash_Debug.txt")
+
         def log(msg):
             try:
                 with open(log_file, 'a', encoding='utf-8') as f:
                     f.write(f"[{datetime.datetime.now()}] {msg}\n")
             except: pass
 
-        print("[Worker] Starting GenerateWorker", flush=True)
-        log("Starting GenerateWorker")
-        
-        try:
-            # 确保输出目录存在
-            Path(self.output_dir).mkdir(parents=True, exist_ok=True)
-            log(f"Output dir ensured: {self.output_dir}")
+        log("================ 任务开始 ================")
+        print(f"[Worker] Log file created at: {log_file}", flush=True)
 
-            # 1. 读取所有发薪表
-            print("[Worker] Step 1: Reading payroll files...", flush=True)
+        try:
+            log("Step 0: Ensuring output directory exists")
+            Path(self.output_dir).mkdir(parents=True, exist_ok=True)
+
+            log(f"Step 1: Reading {len(self.payroll_paths)} payroll files")
             self.progress.emit(f"正在读取 {len(self.payroll_paths)} 个发薪表...")
             payroll_dfs = []
             for i, path in enumerate(self.payroll_paths):
-                print(f"[Worker]   Reading payroll file {i+1}: {path}", flush=True)
+                log(f"  Reading payroll file {i+1}: {path}")
                 self.progress.emit(f"正在读取发薪表 {i+1}/{len(self.payroll_paths)}...")
+                
+                # 核心操作：加载 Excel
                 loader = PayrollLoader()
+                log("  -> Calling loader.load()")
                 df = loader.load(path)
+                log(f"  -> Loaded {len(df)} rows")
                 payroll_dfs.append(df)
 
-            print("[Worker] Concatenating payroll data...", flush=True)
+            log("Step 2: Concatenating payroll data")
             merged_payroll = pd.concat(payroll_dfs, ignore_index=True)
+            log(f"Merged rows: {len(merged_payroll)}")
 
             # 2. 读取社保表
             all_ss_dict = {}
             has_social_security = len(self.social_security_paths) > 0
 
             if has_social_security:
+                log("Step 2b: Reading Social Security files")
                 self.progress.emit(f"正在读取 {len(self.social_security_paths)} 个社保表...")
                 ss_loader = SocialSecurityLoader()
                 for i, path in enumerate(self.social_security_paths):
+                    log(f"  Reading SS file {i+1}: {path}")
                     self.progress.emit(f"正在读取社保表 {i+1}/{len(self.social_security_paths)}...")
                     df = ss_loader.load(path)
                     ss_dict = ss_loader.get_social_security_data(df)
@@ -130,29 +138,34 @@ class GenerateWorker(QThread):
                         if id_card not in all_ss_dict:
                             all_ss_dict[id_card] = data
 
-            # 3. 合并数据并生成申报表
-            print("[Worker] Step 3: Mapping data...", flush=True)
+            # 3. 合并数据
+            log("Step 3: Mapping data")
             tax_df = None
             mode_text = ""
             
             if has_social_security:
                 self.progress.emit(f"正在合并 {len(merged_payroll)} 条发薪数据...")
+                log("  -> Using TwoTableMapper")
                 mapper = TwoTableMapper()
                 tax_df = mapper.merge_and_map(merged_payroll, all_ss_dict, self.period)
                 mode_text = "双表合并模式"
             else:
                 self.progress.emit("正在映射数据到申报表格式...")
+                log("  -> Using TaxReportMapper")
                 mapper = TaxReportMapper()
                 tax_df = mapper.map(merged_payroll, self.period)
                 mode_text = "单表模式"
             
+            log(f"Mapping complete. Rows: {len(tax_df)}, Cols: {len(tax_df.columns)}")
+
             # 4. 生成申报表
-            print("[Worker] Step 4: Generating Excel...", flush=True)
+            log("Step 4: Generating Excel")
             self.progress.emit("正在生成申报表...")
+            
+            # 检查 ReportGenerator
             generator = ReportGenerator()
             output_path = generator.generate(tax_df, self.period, self.output_dir)
-            print(f"[Worker] Excel generated: {output_path}", flush=True)
-            log(f"Excel generated: {output_path}")
+            log(f"Excel generated at: {output_path}")
 
             stats = {
                 "total": int(len(tax_df)),
@@ -163,17 +176,23 @@ class GenerateWorker(QThread):
                 "mode": str(mode_text),
             }
 
-            print("[Worker] Emitting finished signal...", flush=True)
+            log("Emitting finished signal")
             self.finished.emit(str(output_path), stats)
-            print("[Worker] Done!", flush=True)
+            log("================ 任务完成 ================")
 
         except Exception as e:
             tb = traceback.format_exc()
-            error_msg = f"[Worker] ERROR: {e}\n{tb}"
-            print(error_msg, flush=True)
-            log(error_msg)
-            sys.stdout.flush()
-            self.error.emit(f"{e}\n\n详细日志已保存至:\n{log_file}")
+            error_msg = f"发生异常: {e}\n\n{tb}"
+            log(f"ERROR: {error_msg}")
+            print(f"[Worker] ERROR: {e}", flush=True)
+            
+            # 弹出详细错误信息
+            from PyQt6.QtWidgets import QMessageBox
+            from PyQt6.QtCore import Qt
+            
+            # 尝试在 UI 线程显示弹窗 (注意：在线程中直接调用 UI 可能不安全，但这里是为了调试崩溃，且是在异常处理中)
+            # 更好的方式是通过信号发送错误信息，我们在 error 信号中处理
+            self.error.emit(error_msg)
 
 
 class TaxMergePage(QWidget):
