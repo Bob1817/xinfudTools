@@ -1,6 +1,7 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
-    QFileDialog, QMessageBox, QSplitter, QTableWidgetItem
+    QFileDialog, QMessageBox, QSplitter, QTableWidgetItem,
+    QProgressBar
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont
@@ -78,27 +79,42 @@ class GenerateWorker(QThread):
         self.output_dir = output_dir
 
     def run(self):
+        import sys
+        import traceback
+        print("[Worker] Starting GenerateWorker", flush=True)
+        print(f"[Worker] payroll_paths: {self.payroll_paths}", flush=True)
+        print(f"[Worker] social_security_paths: {self.social_security_paths}", flush=True)
+        print(f"[Worker] period: {self.period}", flush=True)
+        print(f"[Worker] output_dir: {self.output_dir}", flush=True)
+        
         try:
             # 1. 读取所有发薪表（必填）
+            print("[Worker] Step 1: Reading payroll files...", flush=True)
             self.progress.emit(f"正在读取 {len(self.payroll_paths)} 个发薪表...")
             payroll_dfs = []
             for i, path in enumerate(self.payroll_paths):
+                print(f"[Worker]   Reading payroll file {i+1}: {path}", flush=True)
                 self.progress.emit(f"正在读取发薪表 {i+1}/{len(self.payroll_paths)}...")
                 loader = PayrollLoader()
                 df = loader.load(path)
+                print(f"[Worker]   Loaded {len(df)} rows from {path}", flush=True)
                 payroll_dfs.append(df)
 
+            print("[Worker] Concatenating payroll data...", flush=True)
             merged_payroll = pd.concat(payroll_dfs, ignore_index=True)
+            print(f"[Worker] Merged payroll: {len(merged_payroll)} rows", flush=True)
 
             # 2. 读取社保表（选填）
             all_ss_dict = {}
             has_social_security = len(self.social_security_paths) > 0
+            print(f"[Worker] Step 2: has_social_security={has_social_security}", flush=True)
 
             if has_social_security:
                 self.progress.emit(f"正在读取 {len(self.social_security_paths)} 个社保表...")
                 ss_loader = SocialSecurityLoader()
 
                 for i, path in enumerate(self.social_security_paths):
+                    print(f"[Worker]   Reading social security file {i+1}: {path}", flush=True)
                     self.progress.emit(f"正在读取社保表 {i+1}/{len(self.social_security_paths)}...")
                     df = ss_loader.load(path)
                     ss_dict = ss_loader.get_social_security_data(df)
@@ -107,36 +123,54 @@ class GenerateWorker(QThread):
                             all_ss_dict[id_card] = data
 
             # 3. 合并数据并生成申报表
+            print("[Worker] Step 3: Mapping data...", flush=True)
+            tax_df = None
+            mode_text = ""
+            
             if has_social_security:
                 self.progress.emit(f"正在合并 {len(merged_payroll)} 条发薪数据...")
                 mapper = TwoTableMapper()
+                print("[Worker]   Using TwoTableMapper.merge_and_map...", flush=True)
                 tax_df = mapper.merge_and_map(merged_payroll, all_ss_dict, self.period)
                 mode_text = "双表合并模式"
             else:
                 self.progress.emit("正在映射数据到申报表格式...")
                 mapper = TaxReportMapper()
+                print("[Worker]   Using TaxReportMapper.map...", flush=True)
+                print(f"[Worker]   merged_payroll shape: {merged_payroll.shape}", flush=True)
+                print(f"[Worker]   merged_payroll columns: {list(merged_payroll.columns)[:15]}...", flush=True)
                 tax_df = mapper.map(merged_payroll, self.period)
                 mode_text = "单表模式"
+            
+            print(f"[Worker] Mapped to {len(tax_df)} rows, {len(tax_df.columns)} cols", flush=True)
+            print(f"[Worker] tax_df dtypes:\n{tax_df.dtypes.to_string()}", flush=True)
 
             # 4. 生成申报表
+            print("[Worker] Step 4: Generating Excel...", flush=True)
             self.progress.emit("正在生成申报表...")
             generator = ReportGenerator()
             output_path = generator.generate(tax_df, self.period, self.output_dir)
+            print(f"[Worker] Excel generated: {output_path}", flush=True)
 
             stats = {
-                "total": len(tax_df),
-                "columns": len(tax_df.columns),
-                "output_path": output_path,
-                "payroll_files": len(self.payroll_paths),
-                "social_security_files": len(self.social_security_paths),
-                "mode": mode_text,
+                "total": int(len(tax_df)),
+                "columns": int(len(tax_df.columns)),
+                "output_path": str(output_path),
+                "payroll_files": int(len(self.payroll_paths)),
+                "social_security_files": int(len(self.social_security_paths)),
+                "mode": str(mode_text),
             }
 
-            self.finished.emit(output_path, stats)
+            print("[Worker] Emitting finished signal...", flush=True)
+            # Convert to simple tuple to avoid PyQt signal serialization issues
+            self.finished.emit(str(output_path), stats)
+            print("[Worker] Done!", flush=True)
 
         except Exception as e:
-            import traceback
-            self.error.emit(f"{e}\n\n{traceback.format_exc()}")
+            tb = traceback.format_exc()
+            print(f"[Worker] ERROR: {e}\n{tb}", flush=True)
+            sys.stdout.flush()
+            self.error.emit(f"{e}\n\n{tb}")
 
 
 class TaxMergePage(QWidget):
@@ -259,13 +293,40 @@ class TaxMergePage(QWidget):
         self._update_period_value()
 
         # 生成按钮
-        self.generate_btn = PushButton("生成个税申报表", self, FluentIcon.PLAY)
+        from PyQt6.QtWidgets import QPushButton as StdPushButton
+        self.generate_btn = StdPushButton("生成个税申报表")
         self.generate_btn.setFixedHeight(40)
+        self.generate_btn.setStyleSheet("""
+            QPushButton {
+                background: #0d6efd;
+                color: white;
+                font-size: 14px;
+                font-weight: bold;
+                border-radius: 6px;
+                border: none;
+            }
+            QPushButton:hover { background: #0b5ed7; }
+            QPushButton:disabled { background: #6c757d; }
+        """)
+        print(f"[UI] Connecting generate_btn to _start_generate", flush=True)
         self.generate_btn.clicked.connect(self._start_generate)
+        print(f"[UI] generate_btn connected", flush=True)
         layout.addWidget(self.generate_btn)
 
         # 进度
-        self.progress_bar = ProgressBar()
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setFixedHeight(8)
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #dee2e6;
+                border-radius: 4px;
+                background-color: #f8f9fa;
+            }
+            QProgressBar::chunk {
+                background-color: #0d6efd;
+                border-radius: 3px;
+            }
+        """)
         self.progress_label = CaptionLabel("")
         layout.addWidget(self.progress_label)
         layout.addWidget(self.progress_bar)
@@ -348,8 +409,17 @@ class TaxMergePage(QWidget):
             self.merge_preview.setPlainText(f"❌ 预览出错：{e}")
 
     def _start_generate(self):
+        import sys
+        print("[UI] _start_generate called", flush=True)
+        sys.stdout.flush()
+        
         payroll_files = self.payroll_file_list.get_files()
         ss_files = self.ss_file_list.get_files()
+        
+        print(f"[UI] payroll_files: {payroll_files}", flush=True)
+        print(f"[UI] ss_files: {ss_files}", flush=True)
+        print(f"[UI] period_value: {self.period_value}", flush=True)
+        sys.stdout.flush()
 
         if not payroll_files:
             InfoBar.error(
@@ -376,7 +446,7 @@ class TaxMergePage(QWidget):
             return
 
         self.generate_btn.setEnabled(False)
-        self.progress_bar.setIndeterminate(True)
+        self.progress_bar.setRange(0, 0)
         self.progress_label.setText("处理中...")
 
         self.worker = GenerateWorker(
@@ -395,7 +465,7 @@ class TaxMergePage(QWidget):
 
     def _on_finished(self, output_path, stats):
         try:
-            self.progress_bar.setIndeterminate(False)
+            self.progress_bar.setRange(0, 100)
             self.progress_label.setText("")
             self.generate_btn.setEnabled(True)
 
@@ -432,7 +502,7 @@ class TaxMergePage(QWidget):
             QMessageBox.critical(self, "错误", f"生成成功但后续处理失败：{e}")
 
     def _on_error(self, err_msg):
-        self.progress_bar.setIndeterminate(False)
+        self.progress_bar.setRange(0, 100)
         self.progress_label.setText("")
         self.generate_btn.setEnabled(True)
 
