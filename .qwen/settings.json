@@ -42,7 +42,8 @@
       "Bash(echo *)",
       "Bash(ls *)",
       "Bash(git tag *)",
-      "Bash(sed *)"
+      "Bash(sed *)",
+      "Bash(gh *)"
     ]
   },
   "$version": 3

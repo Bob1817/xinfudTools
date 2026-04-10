@@ -52,10 +52,11 @@ class UpdateChecker(QThread):
     def _check_gitee(self):
         """从 Gitee 检查更新"""
         try:
-            # Gitee Release API
-            api_url = f"{self.gitee_url}/releases/latest"
+            # Gitee API: /api/v5/repos/{owner}/{repo}/releases/latest
+            api_url = "https://gitee.com/api/v5/repos/shibo8817/xinfud-tools/releases/latest"
             req = urllib.request.Request(api_url)
             req.add_header('User-Agent', 'Mozilla/5.0')
+            req.add_header('Accept', 'application/json')
 
             with urllib.request.urlopen(req, timeout=10) as response:
                 data = json.loads(response.read().decode('utf-8'))
@@ -75,8 +76,8 @@ class UpdateChecker(QThread):
     def _check_github(self):
         """从 GitHub 检查更新"""
         try:
-            # GitHub Release API
-            api_url = f"{self.github_url}/releases/latest"
+            # GitHub API: https://api.github.com/repos/{owner}/{repo}/releases/latest
+            api_url = "https://api.github.com/repos/Bob1817/xinfudTools/releases/latest"
             req = urllib.request.Request(api_url)
             req.add_header('User-Agent', 'Mozilla/5.0')
             req.add_header('Accept', 'application/vnd.github.v3+json')

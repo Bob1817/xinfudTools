@@ -125,8 +125,6 @@ class SettingsPage(QWidget):
 
     def _on_update_available(self, update_info):
         """有可用更新"""
-        InfoBar.remove(self)
-
         dialog = UpdateDialog(update_info, self.window())
         if dialog.exec():
             # 用户点击了下载
@@ -134,7 +132,6 @@ class SettingsPage(QWidget):
 
     def _on_no_update(self):
         """已是最新版本"""
-        InfoBar.remove(self)
         InfoBar.success(
             title="检查更新",
             content="✅ 当前已是最新版本",
@@ -147,7 +144,6 @@ class SettingsPage(QWidget):
 
     def _on_check_error(self, error_msg):
         """检查更新失败"""
-        InfoBar.remove(self)
         InfoBar.error(
             title="检查更新",
             content=error_msg,
