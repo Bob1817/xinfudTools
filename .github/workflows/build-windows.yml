@@ -6,6 +6,9 @@ on:
       - 'v*'
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -43,51 +46,82 @@ jobs:
             --hidden-import="openpyxl" ^
             main.py
 
-      - name: Download Inno Setup
+      - name: Download and install Inno Setup
         run: |
           $ErrorActionPreference = "Stop"
+          Write-Host "Downloading Inno Setup..."
           $innoUrl = "https://files.jrsoftware.org/is/6/innosetup-6.3.3.exe"
           $innoPath = "$env:TEMP\innosetup.exe"
           Invoke-WebRequest -Uri $innoUrl -OutFile $innoPath -UseBasicParsing
-          Start-Process -FilePath $innoPath -ArgumentList "/VERYSILENT","/NORESTART" -Wait
+          Write-Host "Installing Inno Setup..."
+          Start-Process -FilePath $innoPath -ArgumentList "/VERYSILENT","/NORESTART" -Wait -PassThru
+          Write-Host "Inno Setup installed successfully"
         shell: pwsh
 
-      - name: Create installer
+      - name: Create installer with Inno Setup
         run: |
           $ErrorActionPreference = "Stop"
+          
+          # Get version
           $version = python -c "from core.version import get_version; print(get_version())"
-          $exeName = "HRTool-v" + $version + "-windows.exe"
-          Write-Host "Building: $exeName"
+          Write-Host "Version: $version"
           
-          $iss = "[Setup]`n"
-          $iss += "AppName=HR数据处理工具集`n"
-          $iss += "AppVersion=$version`n"
-          $iss += "DefaultDirName={autopf}\HR数据处理工具集`n"
-          $iss += "DefaultGroupName=HR数据处理工具集`n"
-          $iss += "OutputDir=dist`n"
-          $iss += "OutputBaseFilename=$exeName`n"
-          $iss += "Compression=lzma2/max`n"
-          $iss += "SolidCompression=yes`n"
-          $iss += "WizardStyle=modern`n`n"
-          $iss += "[Files]`n"
-          $iss += 'Source: "dist\HRTool\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs' + "`n`n"
-          $iss += "[Icons]`n"
-          $iss += 'Name: "{group}\HR数据处理工具集"; Filename: "{app}\HRTool.exe"' + "`n"
-          $iss += 'Name: "{autodesktop}\HR数据处理工具集"; Filename: "{app}\HRTool.exe"' + "`n`n"
-          $iss += "[Run]`n"
-          $iss += 'Filename: "{app}\HRTool.exe"; Description: "运行程序"; Flags: nowait postinstall skipifsilent' + "`n"
+          # Create Inno Setup script
+          $issPath = "setup.iss"
+          $iss = @'
+[Setup]
+AppName=HR数据处理工具集
+AppVersion={#Version}
+DefaultDirName={autopf}\HR数据处理工具集
+DefaultGroupName=HR数据处理工具集
+OutputDir=dist
+OutputBaseFilename=HRTool-v{#Version}-windows
+Compression=lzma2/max
+SolidCompression=yes
+WizardStyle=modern
+
+[Files]
+Source: "dist\HRTool\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
+
+[Icons]
+Name: "{group}\HR数据处理工具集"; Filename: "{app}\HRTool.exe"
+Name: "{autodesktop}\HR数据处理工具集"; Filename: "{app}\HRTool.exe"
+
+[Run]
+Filename: "{app}\HRTool.exe"; Description: "运行程序"; Flags: nowait postinstall skipifsilent
+'@
           
-          Set-Content -Path "setup.iss" -Value $iss -Encoding UTF8
-          Write-Host "Created setup.iss"
+          # Replace version placeholder
+          $iss = $iss.Replace('{#Version}', $version)
+          Set-Content -Path $issPath -Value $iss -Encoding UTF8
+          Write-Host "Created $issPath"
+          Get-Content $issPath
           
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" setup.iss
+          # Build installer
+          $isccPath = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $isccPath)) {
+            Write-Error "Inno Setup not found at $isccPath"
+            exit 1
+          }
           
-          Write-Host "`n=== Generated installer ==="
-          Get-ChildItem "dist\*.exe" | ForEach-Object {
+          Write-Host "Building installer..."
+          & $isccPath $issPath
+          
+          # Verify output
+          Write-Host "`n=== Build Output ==="
+          Get-ChildItem "dist\*windows.exe" | ForEach-Object {
             $sizeMB = [math]::Round($_.Length / 1MB, 2)
-            Write-Host "  $($_.Name) ($sizeMB MB)"
+            Write-Host "  Created: $($_.Name) ($sizeMB MB)"
           }
         shell: pwsh
+
+      - name: Upload installer artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: dist/*-windows.exe
+          retention-days: 90
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
@@ -99,10 +133,3 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-installer
-          path: dist/*-windows.exe
-          retention-days: 90
