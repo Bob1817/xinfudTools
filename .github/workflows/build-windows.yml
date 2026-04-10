@@ -48,16 +48,15 @@ jobs:
             main.py
         shell: pwsh
 
-      - name: Download and install Inno Setup
+      - name: Install Inno Setup
         run: |
-          $ErrorActionPreference = "Stop"
-          Write-Host "Downloading Inno Setup..."
-          $innoUrl = "https://files.jrsoftware.org/is/6/innosetup-6.3.3.exe"
-          $innoPath = "$env:TEMP\innosetup.exe"
-          Invoke-WebRequest -Uri $innoUrl -OutFile $innoPath -UseBasicParsing
-          Write-Host "Installing Inno Setup..."
-          Start-Process -FilePath $innoPath -ArgumentList "/VERYSILENT","/NORESTART" -Wait -PassThru
-          Write-Host "Inno Setup installed successfully"
+          Write-Host "Installing Inno Setup via winget..."
+          winget install --id "JRSoftware.InnoSetup" --silent --accept-source-agreements --accept-package-agreements
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "winget failed, trying choco..."
+            choco install innosetup -y
+          }
+          Write-Host "Inno Setup installed"
         shell: pwsh
 
       - name: Create ISS file
@@ -96,13 +95,37 @@ jobs:
       - name: Build installer with ISCC
         run: |
           $ErrorActionPreference = "Stop"
-          $isccPath = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           
-          if (-not (Test-Path $isccPath)) {
-            Write-Error "Inno Setup not found at $isccPath"
+          # Find ISCC.exe
+          $isccPath = $null
+          $searchPaths = @(
+            "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+            "C:\Program Files\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          )
+          
+          foreach ($path in $searchPaths) {
+            if (Test-Path $path) {
+              $isccPath = $path
+              break
+            }
+          }
+          
+          if (-not $isccPath) {
+            # Try to find via where command
+            $result = where.exe ISCC 2>$null
+            if ($result) {
+              $isccPath = $result[0]
+            }
+          }
+          
+          if (-not $isccPath -or -not (Test-Path $isccPath)) {
+            Write-Error "ISCC.exe not found. Searched: $($searchPaths -join ', ')"
             exit 1
           }
           
+          Write-Host "Found ISCC at: $isccPath"
           Write-Host "Building installer..."
           & $isccPath setup.iss
           
