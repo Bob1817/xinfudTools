@@ -3,32 +3,32 @@ name: Build Windows Installer
 on:
   push:
     tags:
-      - 'v*'  # 当推送版本标签时触发（如 v1.0.0）
-  workflow_dispatch:  # 支持手动触发
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   build-windows:
     runs-on: windows-latest
     
     steps:
-      - name: 检出代码
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: 设置 Python 环境
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: 安装依赖
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: 使用 PyInstaller 打包
+      - name: Build EXE with PyInstaller
         run: |
           pyinstaller --clean --noconfirm ^
-            --name="HR数据处理工具集" ^
+            --name="HRTool" ^
             --onedir ^
             --windowed ^
             --add-data="core;core" ^
@@ -43,55 +43,53 @@ jobs:
             --hidden-import="openpyxl" ^
             main.py
 
-      - name: 下载 Inno Setup
+      - name: Download Inno Setup
         run: |
+          $ErrorActionPreference = "Stop"
           $innoUrl = "https://files.jrsoftware.org/is/6/innosetup-6.3.3.exe"
           $innoPath = "$env:TEMP\innosetup.exe"
-          Invoke-WebRequest -Uri $innoUrl -OutFile $innoPath
-          Start-Process -FilePath $innoPath -ArgumentList "/VERYSILENT", "/NORESTART" -Wait
+          Invoke-WebRequest -Uri $innoUrl -OutFile $innoPath -UseBasicParsing
+          Start-Process -FilePath $innoPath -ArgumentList "/VERYSILENT","/NORESTART" -Wait
+        shell: pwsh
 
-      - name: 创建安装程序
+      - name: Create installer
         run: |
+          $ErrorActionPreference = "Stop"
           $version = python -c "from core.version import get_version; print(get_version())"
-          $appName = "HR数据处理工具集"
-          $exeName = "${appName}-v${version}-windows.exe"
+          $exeName = "HRTool-v" + $version + "-windows.exe"
+          Write-Host "Building: $exeName"
           
-          # 创建 Inno Setup 脚本
-          $issContent = @"
-[Setup]
-AppName=$appName
-AppVersion=$version
-DefaultDirName={autopf}\$appName
-DefaultGroupName=$appName
-OutputDir=dist
-OutputBaseFilename=$exeName
-Compression=lzma2/max
-SolidCompression=yes
-WizardStyle=modern
-
-[Files]
-Source: "dist\$appName\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
-
-[Icons]
-Name: "{group}\$appName"; Filename: "{app}\$appName.exe"
-Name: "{autodesktop}\$appName"; Filename: "{app}\$appName.exe"
-
-[Run]
-Filename: "{app}\$appName.exe"; Description: "运行程序"; Flags: nowait postinstall skipifsilent
-"@
+          $iss = "[Setup]`n"
+          $iss += "AppName=HR数据处理工具集`n"
+          $iss += "AppVersion=$version`n"
+          $iss += "DefaultDirName={autopf}\HR数据处理工具集`n"
+          $iss += "DefaultGroupName=HR数据处理工具集`n"
+          $iss += "OutputDir=dist`n"
+          $iss += "OutputBaseFilename=$exeName`n"
+          $iss += "Compression=lzma2/max`n"
+          $iss += "SolidCompression=yes`n"
+          $iss += "WizardStyle=modern`n`n"
+          $iss += "[Files]`n"
+          $iss += 'Source: "dist\HRTool\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs' + "`n`n"
+          $iss += "[Icons]`n"
+          $iss += 'Name: "{group}\HR数据处理工具集"; Filename: "{app}\HRTool.exe"' + "`n"
+          $iss += 'Name: "{autodesktop}\HR数据处理工具集"; Filename: "{app}\HRTool.exe"' + "`n`n"
+          $iss += "[Run]`n"
+          $iss += 'Filename: "{app}\HRTool.exe"; Description: "运行程序"; Flags: nowait postinstall skipifsilent' + "`n"
           
-          $issContent | Out-File -FilePath "setup.iss" -Encoding UTF8
+          Set-Content -Path "setup.iss" -Value $iss -Encoding UTF8
+          Write-Host "Created setup.iss"
           
-          # 编译安装程序
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" setup.iss
           
-          # 显示结果
-          Write-Host "`n生成的安装包："
+          Write-Host "`n=== Generated installer ==="
           Get-ChildItem "dist\*.exe" | ForEach-Object {
-            Write-Host "  $($_.Name) ($([math]::Round($_.Length/1MB, 2)) MB)"
+            $sizeMB = [math]::Round($_.Length / 1MB, 2)
+            Write-Host "  $($_.Name) ($sizeMB MB)"
           }
+        shell: pwsh
 
-      - name: 创建 Release
+      - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
@@ -102,9 +100,9 @@ Filename: "{app}\$appName.exe"; Description: "运行程序"; Flags: nowait posti
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 上传构建产物
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-installer
           path: dist/*-windows.exe
-          retention-days: 30
+          retention-days: 90
