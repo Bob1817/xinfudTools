@@ -5,7 +5,9 @@ from pathlib import Path
 from PyQt6.QtWidgets import QApplication, QMessageBox
 from ui.main_window import MainWindow
 
-# 全局异常钩子：捕获所有未处理的异常并弹窗显示，防止闪退
+# ==========================================
+# 全局异常捕获：防止程序闪退并显示错误原因
+# ==========================================
 def global_exception_hook(exctype, value, tb):
     # 1. 记录错误日志
     log_path = Path(os.path.expanduser("~")) / "Documents" / "HR_Tools_Crash.log"
@@ -37,15 +39,15 @@ def global_exception_hook(exctype, value, tb):
 sys.excepthook = global_exception_hook
 
 def main():
-    # 启用高 DPI 支持
-    QApplication.setHighDpiScaleFactorRoundingPolicy(
-        QApplication.styleHints().colorScheme()
-    )
+    # 修复启动崩溃：移除错误的 setHighDpiScaleFactorRoundingPolicy 调用
+    # 该调用之前传入了错误的枚举类型 (ColorScheme) 导致立即崩溃。
+    # 现在依赖 Qt 默认的 DPI 行为。
     
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     app.setApplicationName("HR 数据处理工具集")
-    
+    app.setApplicationVersion("1.0.10") # 更新版本号
+
     try:
         window = MainWindow()
         window.show()
