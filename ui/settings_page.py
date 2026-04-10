@@ -146,14 +146,15 @@ class SettingsPage(QWidget):
         """检查更新失败"""
         print(f"更新检查错误: {error_msg}")
         
-        # 创建自定义对话框
+        # 创建通用的错误提示对话框
         msg_box = MessageBox(
             "检查更新失败",
-            f"{error_msg}\n\n可能原因：\n"
-            "1. 仓库可能设置为私有(Private)状态\n"
-            "2. Release 尚未发布(仍为 Draft 状态)\n"
-            "3. 网络连接问题\n\n"
-            "您可以点击「前往下载」手动查看版本。",
+            f"无法获取最新版本信息。\n\n"
+            f"可能原因：\n"
+            "1. 网络连接异常\n"
+            "2. API 请求频率受限\n"
+            "3. 仓库状态变更\n\n"
+            f"您可以点击「前往下载」手动查看最新版本。",
             self.window()
         )
         msg_box.yesButton.setText("前往下载")
