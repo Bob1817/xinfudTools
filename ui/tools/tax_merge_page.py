@@ -97,7 +97,6 @@ class GenerateWorker(QThread):
             except: pass
 
         log("================ 任务开始 ================")
-        print(f"[Worker] Log file created at: {log_file}", flush=True)
 
         try:
             log("Step 0: Ensuring output directory exists")
@@ -184,7 +183,6 @@ class GenerateWorker(QThread):
             tb = traceback.format_exc()
             error_msg = f"发生异常: {e}\n\n{tb}"
             log(f"ERROR: {error_msg}")
-            print(f"[Worker] ERROR: {e}", flush=True)
             
             # 弹出详细错误信息
             from PyQt6.QtWidgets import QMessageBox
@@ -332,9 +330,7 @@ class TaxMergePage(QWidget):
             QPushButton:hover { background: #0b5ed7; }
             QPushButton:disabled { background: #6c757d; }
         """)
-        print(f"[UI] Connecting generate_btn to _start_generate", flush=True)
         self.generate_btn.clicked.connect(self._start_generate)
-        print(f"[UI] generate_btn connected", flush=True)
         layout.addWidget(self.generate_btn)
 
         # 进度
@@ -433,17 +429,9 @@ class TaxMergePage(QWidget):
             self.merge_preview.setPlainText(f"❌ 预览出错：{e}")
 
     def _start_generate(self):
-        import sys
-        print("[UI] _start_generate called", flush=True)
-        sys.stdout.flush()
-        
+        # 移除 print 和 flush，防止在无控制台的打包版中崩溃
         payroll_files = self.payroll_file_list.get_files()
         ss_files = self.ss_file_list.get_files()
-        
-        print(f"[UI] payroll_files: {payroll_files}", flush=True)
-        print(f"[UI] ss_files: {ss_files}", flush=True)
-        print(f"[UI] period_value: {self.period_value}", flush=True)
-        sys.stdout.flush()
 
         if not payroll_files:
             InfoBar.error(

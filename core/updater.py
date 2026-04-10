@@ -79,10 +79,8 @@ class UpdateChecker(QThread):
                     "source": "Gitee"
                 }
         except urllib.error.HTTPError as e:
-            print(f"Gitee 检查更新失败 (HTTP {e.code}): {e.reason}")
             return None
         except Exception as e:
-            print(f"Gitee 检查更新失败：{e}")
             return None
 
     def _check_github(self):
@@ -115,10 +113,8 @@ class UpdateChecker(QThread):
                     "source": "GitHub"
                 }
         except urllib.error.HTTPError as e:
-            print(f"GitHub 检查更新失败 (HTTP {e.code}): {e.reason}")
             return None
         except Exception as e:
-            print(f"GitHub 检查更新失败：{e}")
             return None
 
 

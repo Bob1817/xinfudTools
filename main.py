@@ -1,9 +1,20 @@
 import sys
 import traceback
 import os
+import io
 from pathlib import Path
 from PyQt6.QtWidgets import QApplication, QMessageBox
 from ui.main_window import MainWindow
+
+# ==========================================
+# 修复 PyInstaller 打包后的 stdout 缺失问题
+# ==========================================
+# 在 windowed 模式下，sys.stdout 为 None。
+# 为了防止代码中的 print() 或 sys.stdout.flush() 导致崩溃，将其重定向到虚拟流。
+if sys.stdout is None:
+    sys.stdout = io.StringIO()
+if sys.stderr is None:
+    sys.stderr = io.StringIO()
 
 # ==========================================
 # 全局异常捕获：防止程序闪退并显示错误原因
@@ -33,6 +44,7 @@ def global_exception_hook(exctype, value, tb):
         msg.exec()
     else:
         # 如果 QApplication 还没启动或已退出，打印到控制台
+        # 注意：此时 stdout 已经被重定向，所以是安全的
         print("".join(traceback.format_exception(exctype, value, tb)))
 
 # 注册钩子
@@ -46,7 +58,7 @@ def main():
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     app.setApplicationName("HR 数据处理工具集")
-    app.setApplicationVersion("1.0.10") # 更新版本号
+    app.setApplicationVersion("1.0.11") # 更新版本号
 
     try:
         window = MainWindow()
