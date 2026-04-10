@@ -52,14 +52,17 @@ class UpdateChecker(QThread):
     def _check_gitee(self):
         """从 Gitee 检查更新"""
         try:
-            # Gitee API: /api/v5/repos/{owner}/{repo}/releases/latest
-            api_url = "https://gitee.com/api/v5/repos/shibo8817/xinfud-tools/releases/latest"
+            # Gitee API: 尝试获取 release 列表中的第一个
+            api_url = "https://gitee.com/api/v5/repos/shibo8817/xinfud-tools/releases?per_page=1"
+            print(f"正在检查 Gitee 更新: {api_url}")
             req = urllib.request.Request(api_url)
             req.add_header('User-Agent', 'Mozilla/5.0')
             req.add_header('Accept', 'application/json')
 
             with urllib.request.urlopen(req, timeout=10) as response:
                 data = json.loads(response.read().decode('utf-8'))
+                if not data: return None
+                data = data[0]
 
                 return {
                     "version": data.get("tag_name", "").lstrip("v"),
@@ -69,6 +72,10 @@ class UpdateChecker(QThread):
                     "html_url": data.get("html_url", self.gitee_url),
                     "source": "Gitee"
                 }
+        except urllib.error.HTTPError as e:
+            print(f"Gitee 检查更新失败 (HTTP {e.code}): {e.reason}")
+            print(f"请确认仓库是否为公开(Public)状态，且 Release 已发布(非 Draft)")
+            return None
         except Exception as e:
             print(f"Gitee 检查更新失败：{e}")
             return None
@@ -76,14 +83,17 @@ class UpdateChecker(QThread):
     def _check_github(self):
         """从 GitHub 检查更新"""
         try:
-            # GitHub API: https://api.github.com/repos/{owner}/{repo}/releases/latest
-            api_url = "https://api.github.com/repos/Bob1817/xinfudTools/releases/latest"
+            # GitHub API
+            api_url = "https://api.github.com/repos/Bob1817/xinfudTools/releases?per_page=1"
+            print(f"正在检查 GitHub 更新: {api_url}")
             req = urllib.request.Request(api_url)
             req.add_header('User-Agent', 'Mozilla/5.0')
             req.add_header('Accept', 'application/vnd.github.v3+json')
 
             with urllib.request.urlopen(req, timeout=10) as response:
                 data = json.loads(response.read().decode('utf-8'))
+                if not data: return None
+                data = data[0]
 
                 return {
                     "version": data.get("tag_name", "").lstrip("v"),
@@ -93,6 +103,10 @@ class UpdateChecker(QThread):
                     "html_url": data.get("html_url", self.github_url),
                     "source": "GitHub"
                 }
+        except urllib.error.HTTPError as e:
+            print(f"GitHub 检查更新失败 (HTTP {e.code}): {e.reason}")
+            print(f"请确认仓库是否为公开(Public)状态，且 Release 已发布(非 Draft)")
+            return None
         except Exception as e:
             print(f"GitHub 检查更新失败：{e}")
             return None

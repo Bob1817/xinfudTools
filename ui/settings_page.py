@@ -144,15 +144,22 @@ class SettingsPage(QWidget):
 
     def _on_check_error(self, error_msg):
         """检查更新失败"""
-        InfoBar.error(
-            title="检查更新",
-            content=error_msg,
-            orient=Qt.Orientation.Horizontal,
-            isClosable=True,
-            position=InfoBarPosition.TOP,
-            duration=5000,
-            parent=self
+        print(f"更新检查错误: {error_msg}")
+        
+        # 创建自定义对话框
+        msg_box = MessageBox(
+            "检查更新失败",
+            f"{error_msg}\n\n可能原因：\n"
+            "1. 仓库可能设置为私有(Private)状态\n"
+            "2. Release 尚未发布(仍为 Draft 状态)\n"
+            "3. 网络连接问题\n\n"
+            "您可以点击「前往下载」手动查看版本。",
+            self.window()
         )
+        msg_box.yesButton.setText("前往下载")
+        msg_box.cancelButton.setText("关闭")
+        if msg_box.exec():
+            self._open_download_page()
 
     def _download_update(self, update_info):
         """下载更新"""
