@@ -61,23 +61,59 @@ class PayrollLoader:
         return list(df.columns[self.COMPANY_START : self.COMPANY_START + 7])
 
     def get_personal_columns(self, df: pd.DataFrame) -> list[str]:
-        """获取个人部分列名（按名称查找，支持灵活列顺序）"""
-        # 按名称查找个人部分列
+        """获取个人部分列名，优先使用个人区段，避免误拿企业部分列"""
         all_cols = list(df.columns)
-        personal_names = []
+        personal_slice = all_cols[self.PERSONAL_START:self.PERSONAL_START + 6]
         target_names = ["养老", "失业", "工伤", "医疗", "公积金", "总计"]
 
+        # 优先从个人区段按关键字识别
+        if len(personal_slice) >= 5:
+            personal_names = []
+            for target in target_names:
+                for col in personal_slice:
+                    if target in col and col not in personal_names:
+                        personal_names.append(col)
+                        break
+
+            if len(personal_names) >= 5:
+                return personal_names
+
+            # 个人区段存在但命名不规范时，回退到位置
+            if len(personal_slice) == 6:
+                return personal_slice
+
+        # 最后兜底，全表按名称查找
+        personal_names = []
         for target in target_names:
             for col in all_cols:
                 if target in col and col not in personal_names:
                     personal_names.append(col)
                     break
 
-        # 如果按名称没找到，尝试按位置获取
-        if len(personal_names) < 5 and len(all_cols) >= self.PERSONAL_START + 6:
-            personal_names = all_cols[self.PERSONAL_START:self.PERSONAL_START + 6]
-
         return personal_names
+
+    def get_personal_column_mapping(self, df: pd.DataFrame) -> dict[str, str]:
+        """返回个人社保列映射，并在结构异常时给出清晰错误"""
+        personal_cols = self.get_personal_columns(df)
+        required = {
+            "养老": 0,
+            "失业": 1,
+            "工伤": 2,
+            "医疗": 3,
+            "公积金": 4,
+        }
+
+        if len(personal_cols) < 5:
+            raise ValueError(
+                "发薪表中未识别到完整的个人社保公积金列。"
+                f"当前识别到 {len(personal_cols)} 列：{personal_cols}。"
+                "请确认个人部分至少包含养老、失业、工伤、医疗、公积金。"
+            )
+
+        return {
+            name: personal_cols[index]
+            for name, index in required.items()
+        }
 
     def get_column_info(self, df: pd.DataFrame) -> dict:
         """获取列位置信息（用于调试）"""

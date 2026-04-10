@@ -87,6 +87,14 @@ class TaxReportMapper:
         result["减免税额"] = 0
         result["备注"] = df[l.COL_REMARK].fillna("") if l.COL_REMARK in df.columns else ""
 
+        # 确保数值列是数值类型，避免 openpyxl 报错
+        for col in ["本期收入", "基本养老保险费", "基本医疗保险费", "失业保险费", "住房公积金", "通讯费用"]:
+            result[col] = pd.to_numeric(result[col], errors='coerce').fillna(0)
+
+        result["*证件号码"] = result["*证件号码"].astype(str)
+        result["*姓名"] = result["*姓名"].astype(str)
+        result["备注"] = result["备注"].fillna("").astype(str)
+
         return result
 
     def validate_mapping(self, payroll_df: pd.DataFrame) -> dict:

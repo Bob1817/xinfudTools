@@ -17,9 +17,12 @@ class ReportGenerator:
         filename = f"个税申报表_{period}_{timestamp}.xlsx"
         filepath = str(Path(output_dir) / filename)
 
-        with pd.ExcelWriter(filepath, engine="openpyxl") as writer:
-            data.to_excel(writer, index=False, sheet_name="扣缴申报表")
-            self._format_sheet(writer.book["扣缴申报表"])
+        try:
+            with pd.ExcelWriter(filepath, engine="openpyxl") as writer:
+                data.to_excel(writer, index=False, sheet_name="扣缴申报表")
+                self._format_sheet(writer.book["扣缴申报表"])
+        except Exception as e:
+            raise RuntimeError(f"生成 Excel 文件失败：{e}")
 
         return filepath
 

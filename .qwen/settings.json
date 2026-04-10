@@ -39,7 +39,9 @@
       "Bash(ln *)",
       "Bash(hdiutil *)",
       "Bash(git rm *)",
-      "Bash(echo *)"
+      "Bash(echo *)",
+      "Bash(ls *)",
+      "Bash(git tag *)"
     ]
   },
   "$version": 3

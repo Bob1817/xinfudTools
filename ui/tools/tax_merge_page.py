@@ -2,7 +2,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
     QFileDialog, QMessageBox, QSplitter, QTableWidgetItem
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont
 from qfluentwidgets import (
     ComboBox, PushButton, ProgressBar, TextEdit,
@@ -394,33 +394,42 @@ class TaxMergePage(QWidget):
         self.progress_label.setText(msg)
 
     def _on_finished(self, output_path, stats):
-        self.progress_bar.setIndeterminate(False)
-        self.progress_label.setText("")
-        self.generate_btn.setEnabled(True)
+        try:
+            self.progress_bar.setIndeterminate(False)
+            self.progress_label.setText("")
+            self.generate_btn.setEnabled(True)
 
-        source_desc = f"[发薪]{' + '.join(Path(f).name for f in self.payroll_file_list.get_files())}"
-        if self.ss_file_list.get_files():
-            source_desc += f" + [社保]{' + '.join(Path(f).name for f in self.ss_file_list.get_files())}"
+            source_desc = f"[发薪]{' + '.join(Path(f).name for f in self.payroll_file_list.get_files())}"
+            if self.ss_file_list.get_files():
+                source_desc += f" + [社保]{' + '.join(Path(f).name for f in self.ss_file_list.get_files())}"
 
-        self.db.save_record({
-            "period": self.period_value,
-            "source_file": source_desc,
-            "output_file": output_path,
-            "total_records": stats["total"],
-            "note": f"{stats['mode']}，发薪表{stats['payroll_files']}个，社保表{stats['social_security_files']}个",
-        })
+            try:
+                self.db.save_record({
+                    "period": self.period_value,
+                    "source_file": source_desc,
+                    "output_file": output_path,
+                    "total_records": stats["total"],
+                    "note": f"{stats['mode']}，发薪表{stats['payroll_files']}个，社保表{stats['social_security_files']}个",
+                })
+            except Exception as db_err:
+                print(f"Database save error (non-fatal): {db_err}")
 
-        self._open_folder(output_path)
+            # 延迟打开文件夹，避免阻塞 UI 线程
+            QTimer.singleShot(500, lambda: self._open_folder(output_path))
 
-        InfoBar.success(
-            title="生成成功",
-            content=f"个税申报表已生成：{stats['total']} 条数据\n已自动打开文件所在文件夹。",
-            orient=Qt.Orientation.Horizontal,
-            isClosable=True,
-            position=InfoBarPosition.TOP,
-            duration=5000,
-            parent=self
-        )
+            InfoBar.success(
+                title="生成成功",
+                content=f"个税申报表已生成：{stats['total']} 条数据\n已自动打开文件所在文件夹。",
+                orient=Qt.Orientation.Horizontal,
+                isClosable=True,
+                position=InfoBarPosition.TOP,
+                duration=5000,
+                parent=self
+            )
+        except Exception as e:
+            import traceback
+            print(f"Error in _on_finished: {e}\n{traceback.format_exc()}")
+            QMessageBox.critical(self, "错误", f"生成成功但后续处理失败：{e}")
 
     def _on_error(self, err_msg):
         self.progress_bar.setIndeterminate(False)
