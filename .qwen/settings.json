@@ -43,7 +43,8 @@
       "Bash(ls *)",
       "Bash(git tag *)",
       "Bash(sed *)",
-      "Bash(gh *)"
+      "Bash(gh *)",
+      "Bash(curl *)"
     ]
   },
   "$version": 3

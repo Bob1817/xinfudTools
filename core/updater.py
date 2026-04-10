@@ -54,7 +54,7 @@ class UpdateChecker(QThread):
         try:
             # Gitee API: 尝试获取 release 列表中的第一个
             api_url = "https://gitee.com/api/v5/repos/shibo8817/xinfud-tools/releases?per_page=1"
-            print(f"正在检查 Gitee 更新: {api_url}")
+            print(f"正在检查 Gitee 更新：{api_url}")
             req = urllib.request.Request(api_url)
             req.add_header('User-Agent', 'Mozilla/5.0')
             req.add_header('Accept', 'application/json')
@@ -74,7 +74,14 @@ class UpdateChecker(QThread):
                 }
         except urllib.error.HTTPError as e:
             print(f"Gitee 检查更新失败 (HTTP {e.code}): {e.reason}")
-            print(f"请确认仓库是否为公开(Public)状态，且 Release 已发布(非 Draft)")
+            if e.code == 403:
+                print("提示：可能是请求频率过高，请稍后再试")
+            elif e.code == 404:
+                print("提示：仓库或 Release 未找到，请确认仓库地址是否正确")
+            elif e.code == 401:
+                print("提示：仓库可能是私有 (Private) 状态，或需要认证")
+            else:
+                print("提示：请确认仓库是否为公开 (Public) 状态，且 Release 已发布 (非 Draft)")
             return None
         except Exception as e:
             print(f"Gitee 检查更新失败：{e}")
@@ -85,7 +92,7 @@ class UpdateChecker(QThread):
         try:
             # GitHub API
             api_url = "https://api.github.com/repos/Bob1817/xinfudTools/releases?per_page=1"
-            print(f"正在检查 GitHub 更新: {api_url}")
+            print(f"正在检查 GitHub 更新：{api_url}")
             req = urllib.request.Request(api_url)
             req.add_header('User-Agent', 'Mozilla/5.0')
             req.add_header('Accept', 'application/vnd.github.v3+json')
@@ -105,7 +112,14 @@ class UpdateChecker(QThread):
                 }
         except urllib.error.HTTPError as e:
             print(f"GitHub 检查更新失败 (HTTP {e.code}): {e.reason}")
-            print(f"请确认仓库是否为公开(Public)状态，且 Release 已发布(非 Draft)")
+            if e.code == 403:
+                print("提示：可能是请求频率过高，请稍后再试")
+            elif e.code == 404:
+                print("提示：仓库或 Release 未找到，请确认仓库地址是否正确")
+            elif e.code == 401:
+                print("提示：仓库可能是私有 (Private) 状态，或需要认证")
+            else:
+                print("提示：请确认仓库是否为公开 (Public) 状态，且 Release 已发布 (非 Draft)")
             return None
         except Exception as e:
             print(f"GitHub 检查更新失败：{e}")
@@ -173,14 +187,6 @@ class UpdateManager:
 
     GITEE_REPO = "https://gitee.com/shibo8817/xinfud-tools"
     GITHUB_REPO = "https://github.com/Bob1817/xinfudTools"
-
-    @staticmethod
-    def get_update_info_url():
-        """获取更新检查 URL"""
-        return {
-            "gitee": f"{UpdateManager.GITEE_REPO}/api/v5/repos/shibo8817/xinfud-tools/releases/latest",
-            "github": f"https://api.github.com/repos/Bob1817/xinfudTools/releases/latest"
-        }
 
     @staticmethod
     def open_download_page():
