@@ -27,24 +27,26 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
+        shell: pwsh
 
       - name: Build EXE with PyInstaller
         run: |
-          pyinstaller --clean --noconfirm ^
-            --name="HRTool" ^
-            --onedir ^
-            --windowed ^
-            --add-data="core;core" ^
-            --add-data="ui;ui" ^
-            --add-data="db;db" ^
-            --hidden-import="PyQt6" ^
-            --hidden-import="PyQt6.QtCore" ^
-            --hidden-import="PyQt6.QtGui" ^
-            --hidden-import="PyQt6.QtWidgets" ^
-            --hidden-import="qfluentwidgets" ^
-            --hidden-import="pandas" ^
-            --hidden-import="openpyxl" ^
+          pyinstaller --clean --noconfirm `
+            --name="HRTool" `
+            --onedir `
+            --windowed `
+            --add-data="core;core" `
+            --add-data="ui;ui" `
+            --add-data="db;db" `
+            --hidden-import="PyQt6" `
+            --hidden-import="PyQt6.QtCore" `
+            --hidden-import="PyQt6.QtGui" `
+            --hidden-import="PyQt6.QtWidgets" `
+            --hidden-import="qfluentwidgets" `
+            --hidden-import="pandas" `
+            --hidden-import="openpyxl" `
             main.py
+        shell: pwsh
 
       - name: Download and install Inno Setup
         run: |
