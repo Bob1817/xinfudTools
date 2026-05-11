@@ -99,7 +99,7 @@ class SettingsPage(QWidget):
         # 自动打开文件夹
         self.auto_open_toggle = ToggleButton("生成后自动打开文件夹")
         self.auto_open_toggle.setChecked(self.config.get_auto_open_folder())
-        self.auto_open_toggle.checkedChanged.connect(self._on_auto_open_changed)
+        self.auto_open_toggle.toggled.connect(self._on_auto_open_changed)
         options_layout.addWidget(self.auto_open_toggle)
         
         options_layout.addStretch()
@@ -132,7 +132,7 @@ class SettingsPage(QWidget):
         
         self.check_update_toggle = ToggleButton("启动时自动检查更新")
         self.check_update_toggle.setChecked(self.config.should_check_update_on_startup())
-        self.check_update_toggle.checkedChanged.connect(self._on_check_update_changed)
+        self.check_update_toggle.toggled.connect(self._on_check_update_changed)
         options_layout.addWidget(self.check_update_toggle)
         
         options_layout.addStretch()
