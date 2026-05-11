@@ -58,7 +58,7 @@ def main():
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     app.setApplicationName("HR 数据处理工具集")
-    app.setApplicationVersion("1.1.0") # 更新版本号
+    app.setApplicationVersion("1.1.1") # 更新版本号
 
     try:
         window = MainWindow()
