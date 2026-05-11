@@ -19,14 +19,15 @@ from qfluentwidgets import (
 from pathlib import Path
 from core.data_loader import PayrollLoader
 from core.social_security_loader import SocialSecurityLoader
+from core.social_security_loader_v3 import SocialSecurityLoaderV3, detect_social_security_sheets_v3
 from core.data_mapper import TaxReportMapper
 from core.two_table_mapper import TwoTableMapper
 from core.report_generator import ReportGenerator
 from core.config_manager import get_config_manager
 from core.error_handler import handle_error, get_friendly_error_message
 from db.database import Database
-from ui.dialogs.sheet_selector import SheetSelectorDialog
-from ui.dialogs.field_mapper import FieldMapperDialog
+from ui.dialogs.sheet_selector_v3 import SheetSelectorDialogV3
+from ui.dialogs.field_mapper_v3 import FieldMapperDialogV3
 from ui.dialogs.output_path_dialog import OutputPathDialog
 import pandas as pd
 import subprocess
@@ -138,7 +139,8 @@ class GenerateWorker(QThread):
             if has_social_security:
                 log("Step 2b: Reading Social Security files")
                 self.progress.emit(f"正在读取 {len(self.social_security_paths)} 个社保表...")
-                ss_loader = SocialSecurityLoader()
+                from core.social_security_loader_v3 import SocialSecurityLoaderV3
+                ss_loader = SocialSecurityLoaderV3()
                 
                 for i, path in enumerate(self.social_security_paths):
                     log(f"  Reading SS file {i+1}: {path}")
@@ -147,8 +149,8 @@ class GenerateWorker(QThread):
                     # 使用指定的Sheet和字段映射
                     sheet_info = self.ss_sheet_mapping.get(path)
                     if sheet_info:
-                        sheet_name, field_mapping = sheet_info
-                        ss_loader.select_sheet(sheet_name, field_mapping)
+                        sheet_name, field_mapping, match_type = sheet_info
+                        ss_loader.select_sheet(sheet_name, field_mapping, match_type)
                     
                     df = ss_loader.load(path)
                     ss_dict = ss_loader.get_social_security_data(df)
@@ -388,7 +390,7 @@ class TaxMergePage(QWidget):
             self.period_value = f"{year}-{month:02d}"
 
     def _add_social_security_files(self):
-        """添加社保文件（优化版，支持Sheet选择）"""
+        """添加社保文件（V3版，严格按照用户要求处理字段匹配）"""
         paths, _ = QFileDialog.getOpenFileNames(
             self, "选择社保数据表", "", "Excel 文件 (*.xlsx *.xls)"
         )
@@ -399,38 +401,80 @@ class TaxMergePage(QWidget):
         # 检测每个文件的Sheet
         for path in paths:
             try:
-                ss_loader = SocialSecurityLoader()
-                need_select, results, summary = ss_loader.detect_sheets(path)
+                ss_loader = SocialSecurityLoaderV3()
+                mode, results, summary = ss_loader.detect_sheets(path)
                 
-                if need_select:
-                    # 需要用户选择Sheet
-                    selected = SheetSelectorDialog.select_sheet(results, self)
+                if mode == 'none':
+                    QMessageBox.warning(
+                        self,
+                        "未找到社保数据",
+                        f"文件 {Path(path).name} 中未找到包含完整社保数据（养老、医疗、失业、公积金）的Sheet"
+                    )
+                    continue
+                
+                selected_result = None
+                
+                if mode == 'auto_perfect':
+                    # 只有一个Sheet完全匹配，直接使用
+                    selected_result = results[0]
+                    self.ss_sheet_mapping[path] = (
+                        selected_result.sheet_name, 
+                        selected_result.matched_fields,
+                        selected_result.match_type
+                    )
                     
-                    if selected:
-                        # 检查是否需要字段映射确认
-                        if not selected.is_perfect_match:
-                            # 需要确认字段映射
-                            field_mapping = FieldMapperDialog.confirm_mapping(
-                                selected.sample_data.columns.tolist(),
-                                selected.matched_fields,
-                                self
-                            )
-                            
-                            if field_mapping:
-                                self.ss_sheet_mapping[path] = (selected.sheet_name, field_mapping)
-                            else:
-                                # 用户取消了字段映射，跳过此文件
-                                continue
-                        else:
-                            self.ss_sheet_mapping[path] = (selected.sheet_name, selected.matched_fields)
+                elif mode == 'select_perfect':
+                    # 多个Sheet完全匹配，让用户选择
+                    selected_result = SheetSelectorDialogV3.select_sheet(results, self)
+                    if selected_result:
+                        self.ss_sheet_mapping[path] = (
+                            selected_result.sheet_name,
+                            selected_result.matched_fields,
+                            selected_result.match_type
+                        )
                     else:
-                        # 用户取消了Sheet选择，跳过此文件
-                        continue
-                else:
-                    # 自动选择了Sheet
-                    if results:
-                        best = results[0]
-                        self.ss_sheet_mapping[path] = (best.sheet_name, best.matched_fields)
+                        continue  # 用户取消
+                        
+                elif mode == 'auto_partial':
+                    # 只有一个Sheet部分匹配，让用户确认字段映射
+                    result = results[0]
+                    field_mapping = FieldMapperDialogV3.confirm_mapping(
+                        list(result.matched_fields.values()),
+                        result.matched_fields,
+                        result.sheet_name,
+                        self
+                    )
+                    
+                    if field_mapping:
+                        self.ss_sheet_mapping[path] = (
+                            result.sheet_name,
+                            field_mapping,
+                            'partial'
+                        )
+                    else:
+                        continue  # 用户取消
+                        
+                elif mode == 'select_partial':
+                    # 多个Sheet部分匹配，先选Sheet再确认字段映射
+                    selected_result = SheetSelectorDialogV3.select_sheet(results, self)
+                    if selected_result:
+                        field_mapping = FieldMapperDialogV3.confirm_mapping(
+                            list(selected_result.matched_fields.values()),
+                            selected_result.matched_fields,
+                            selected_result.sheet_name,
+                            self
+                        )
+                        
+                        if field_mapping:
+                            self.ss_sheet_mapping[path] = (
+                                selected_result.sheet_name,
+                                field_mapping,
+                                'partial'
+                            )
+                        else:
+                            continue  # 用户取消
+                    else:
+                        continue  # 用户取消
                 
                 # 添加到列表
                 self.ss_file_list.add_files([path])
@@ -471,7 +515,7 @@ class TaxMergePage(QWidget):
                     payroll_ids.add(cleaned)
 
             if ss_files:
-                ss_loader = SocialSecurityLoader()
+                ss_loader = SocialSecurityLoaderV3()
                 all_ss_ids = set()
                 total_ss_rows = 0
 
@@ -479,8 +523,8 @@ class TaxMergePage(QWidget):
                     # 使用缓存的Sheet映射
                     sheet_info = self.ss_sheet_mapping.get(path)
                     if sheet_info:
-                        sheet_name, _ = sheet_info
-                        ss_loader.select_sheet(sheet_name)
+                        sheet_name, field_mapping, match_type = sheet_info
+                        ss_loader.select_sheet(sheet_name, field_mapping, match_type)
                     
                     df = ss_loader.load(path)
                     total_ss_rows += len(df)
