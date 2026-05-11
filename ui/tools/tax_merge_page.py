@@ -1,3 +1,8 @@
+"""
+报税合并页面（优化版）
+支持身份证号合并、多Sheet识别、输出路径选择
+"""
+
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
     QFileDialog, QMessageBox, QSplitter, QTableWidgetItem,
@@ -17,7 +22,12 @@ from core.social_security_loader import SocialSecurityLoader
 from core.data_mapper import TaxReportMapper
 from core.two_table_mapper import TwoTableMapper
 from core.report_generator import ReportGenerator
+from core.config_manager import get_config_manager
+from core.error_handler import handle_error, get_friendly_error_message
 from db.database import Database
+from ui.dialogs.sheet_selector import SheetSelectorDialog
+from ui.dialogs.field_mapper import FieldMapperDialog
+from ui.dialogs.output_path_dialog import OutputPathDialog
 import pandas as pd
 import subprocess
 import datetime
@@ -60,7 +70,7 @@ class FileListWidget(TableWidget):
 
 
 class GenerateWorker(QThread):
-    """后台生成线程"""
+    """后台生成线程（优化版）"""
     finished = pyqtSignal(str, dict)
     error = pyqtSignal(str)
     progress = pyqtSignal(str)
@@ -70,13 +80,15 @@ class GenerateWorker(QThread):
         payroll_paths: list,
         social_security_paths: list,
         period: str,
-        output_dir: str
+        output_dir: str,
+        ss_sheet_mapping: dict = None  # 新增：社保表Sheet映射
     ):
         super().__init__()
         self.payroll_paths = payroll_paths
         self.social_security_paths = social_security_paths
         self.period = period
         self.output_dir = output_dir
+        self.ss_sheet_mapping = ss_sheet_mapping or {}  # {文件路径: (sheet_name, field_mapping)}
 
     def run(self):
         import sys
@@ -84,7 +96,7 @@ class GenerateWorker(QThread):
         import datetime
         import os
 
-        # 调试日志路径：保存到桌面，确保即使安装后也能找到
+        # 调试日志路径
         desktop = os.path.join(os.path.expanduser("~"), "Desktop")
         if not os.path.exists(desktop):
             desktop = os.path.expanduser("~")
@@ -109,7 +121,6 @@ class GenerateWorker(QThread):
                 log(f"  Reading payroll file {i+1}: {path}")
                 self.progress.emit(f"正在读取发薪表 {i+1}/{len(self.payroll_paths)}...")
                 
-                # 核心操作：加载 Excel
                 loader = PayrollLoader()
                 log("  -> Calling loader.load()")
                 df = loader.load(path)
@@ -128,14 +139,26 @@ class GenerateWorker(QThread):
                 log("Step 2b: Reading Social Security files")
                 self.progress.emit(f"正在读取 {len(self.social_security_paths)} 个社保表...")
                 ss_loader = SocialSecurityLoader()
+                
                 for i, path in enumerate(self.social_security_paths):
                     log(f"  Reading SS file {i+1}: {path}")
                     self.progress.emit(f"正在读取社保表 {i+1}/{len(self.social_security_paths)}...")
+                    
+                    # 使用指定的Sheet和字段映射
+                    sheet_info = self.ss_sheet_mapping.get(path)
+                    if sheet_info:
+                        sheet_name, field_mapping = sheet_info
+                        ss_loader.select_sheet(sheet_name, field_mapping)
+                    
                     df = ss_loader.load(path)
                     ss_dict = ss_loader.get_social_security_data(df)
+                    
+                    # 合并社保数据（同一身份证号取第一条）
                     for id_card, data in ss_dict.items():
                         if id_card not in all_ss_dict:
                             all_ss_dict[id_card] = data
+
+                log(f"Total SS records: {len(all_ss_dict)}")
 
             # 3. 合并数据
             log("Step 3: Mapping data")
@@ -146,22 +169,21 @@ class GenerateWorker(QThread):
                 self.progress.emit(f"正在合并 {len(merged_payroll)} 条发薪数据...")
                 log("  -> Using TwoTableMapper")
                 mapper = TwoTableMapper()
-                tax_df = mapper.merge_and_map(merged_payroll, all_ss_dict, self.period)
+                tax_df, merge_stats = mapper.merge_and_map(merged_payroll, all_ss_dict, self.period)
                 mode_text = "双表合并模式"
+                log(f"Mapping complete. Rows: {len(tax_df)}")
             else:
                 self.progress.emit("正在映射数据到申报表格式...")
                 log("  -> Using TaxReportMapper")
                 mapper = TaxReportMapper()
                 tax_df = mapper.map(merged_payroll, self.period)
+                merge_stats = {'total_records': len(tax_df)}
                 mode_text = "单表模式"
-            
-            log(f"Mapping complete. Rows: {len(tax_df)}, Cols: {len(tax_df.columns)}")
 
             # 4. 生成申报表
             log("Step 4: Generating Excel")
             self.progress.emit("正在生成申报表...")
             
-            # 检查 ReportGenerator
             generator = ReportGenerator()
             output_path = generator.generate(tax_df, self.period, self.output_dir)
             log(f"Excel generated at: {output_path}")
@@ -173,6 +195,7 @@ class GenerateWorker(QThread):
                 "payroll_files": int(len(self.payroll_paths)),
                 "social_security_files": int(len(self.social_security_paths)),
                 "mode": str(mode_text),
+                "merge_stats": merge_stats,
             }
 
             log("Emitting finished signal")
@@ -184,25 +207,29 @@ class GenerateWorker(QThread):
             error_msg = f"发生异常: {e}\n\n{tb}"
             log(f"ERROR: {error_msg}")
             
-            # 弹出详细错误信息
-            from PyQt6.QtWidgets import QMessageBox
-            from PyQt6.QtCore import Qt
-            
-            # 尝试在 UI 线程显示弹窗 (注意：在线程中直接调用 UI 可能不安全，但这里是为了调试崩溃，且是在异常处理中)
-            # 更好的方式是通过信号发送错误信息，我们在 error 信号中处理
-            self.error.emit(error_msg)
+            # 使用友好的错误信息
+            friendly_msg = get_friendly_error_message(e)
+            self.error.emit(friendly_msg)
 
 
 class TaxMergePage(QWidget):
-    """报税合并页面"""
+    """报税合并页面（优化版）"""
 
     def __init__(self, db: Database, parent=None):
         super().__init__(parent)
         self.setObjectName("taxMergePage")
         self.db = db
-        # 修复 macOS 崩溃：默认输出路径改为 Documents 目录，避免桌面权限问题
-        self.output_dir = str(Path.home() / "Documents" / "HR工具输出")
+        
+        # 获取配置管理器
+        self.config = get_config_manager()
+        
+        # 使用配置的输出路径
+        self.output_dir = self.config.get_output_path()
         Path(self.output_dir).mkdir(parents=True, exist_ok=True)
+        
+        # 社保表Sheet映射缓存
+        self.ss_sheet_mapping = {}  # {文件路径: (sheet_name, field_mapping)}
+        
         self._build_ui()
 
     def _build_ui(self):
@@ -361,13 +388,63 @@ class TaxMergePage(QWidget):
             self.period_value = f"{year}-{month:02d}"
 
     def _add_social_security_files(self):
+        """添加社保文件（优化版，支持Sheet选择）"""
         paths, _ = QFileDialog.getOpenFileNames(
             self, "选择社保数据表", "", "Excel 文件 (*.xlsx *.xls)"
         )
-        if paths:
-            self.ss_file_list.add_files(list(paths))
+        
+        if not paths:
+            return
+        
+        # 检测每个文件的Sheet
+        for path in paths:
+            try:
+                ss_loader = SocialSecurityLoader()
+                need_select, results, summary = ss_loader.detect_sheets(path)
+                
+                if need_select:
+                    # 需要用户选择Sheet
+                    selected = SheetSelectorDialog.select_sheet(results, self)
+                    
+                    if selected:
+                        # 检查是否需要字段映射确认
+                        if not selected.is_perfect_match:
+                            # 需要确认字段映射
+                            field_mapping = FieldMapperDialog.confirm_mapping(
+                                selected.sample_data.columns.tolist(),
+                                selected.matched_fields,
+                                self
+                            )
+                            
+                            if field_mapping:
+                                self.ss_sheet_mapping[path] = (selected.sheet_name, field_mapping)
+                            else:
+                                # 用户取消了字段映射，跳过此文件
+                                continue
+                        else:
+                            self.ss_sheet_mapping[path] = (selected.sheet_name, selected.matched_fields)
+                    else:
+                        # 用户取消了Sheet选择，跳过此文件
+                        continue
+                else:
+                    # 自动选择了Sheet
+                    if results:
+                        best = results[0]
+                        self.ss_sheet_mapping[path] = (best.sheet_name, best.matched_fields)
+                
+                # 添加到列表
+                self.ss_file_list.add_files([path])
+                
+            except Exception as e:
+                error_info = handle_error(e, {'path': path})
+                QMessageBox.warning(
+                    self,
+                    "文件检测失败",
+                    f"无法检测文件：{Path(path).name}\n\n{error_info.message}"
+                )
 
     def _add_payroll_files(self):
+        """添加发薪文件"""
         paths, _ = QFileDialog.getOpenFileNames(
             self, "选择发薪数据表", "", "Excel 文件 (*.xlsx *.xls)"
         )
@@ -399,6 +476,12 @@ class TaxMergePage(QWidget):
                 total_ss_rows = 0
 
                 for path in ss_files:
+                    # 使用缓存的Sheet映射
+                    sheet_info = self.ss_sheet_mapping.get(path)
+                    if sheet_info:
+                        sheet_name, _ = sheet_info
+                        ss_loader.select_sheet(sheet_name)
+                    
                     df = ss_loader.load(path)
                     total_ss_rows += len(df)
                     for id_card in df["身份证号"]:
@@ -426,10 +509,11 @@ class TaxMergePage(QWidget):
                 )
 
         except Exception as e:
-            self.merge_preview.setPlainText(f"❌ 预览出错：{e}")
+            error_info = handle_error(e)
+            self.merge_preview.setPlainText(f"❌ 预览出错：{error_info.message}")
 
     def _start_generate(self):
-        # 移除 print 和 flush，防止在无控制台的打包版中崩溃
+        """开始生成（优化版，支持输出路径选择）"""
         payroll_files = self.payroll_file_list.get_files()
         ss_files = self.ss_file_list.get_files()
 
@@ -457,6 +541,24 @@ class TaxMergePage(QWidget):
             )
             return
 
+        # 选择输出路径
+        output_path, remember, auto_open = OutputPathDialog.select_output_path(
+            self.output_dir, 
+            self
+        )
+        
+        if not output_path:
+            # 用户取消了
+            return
+        
+        # 更新输出路径
+        self.output_dir = output_path
+        
+        # 更新配置
+        if remember:
+            self.config.set_output_path(output_path)
+        self.config.set_auto_open_folder(auto_open)
+
         self.generate_btn.setEnabled(False)
         self.progress_bar.setRange(0, 0)
         self.progress_label.setText("处理中...")
@@ -465,7 +567,8 @@ class TaxMergePage(QWidget):
             payroll_files,
             ss_files,
             self.period_value,
-            self.output_dir
+            self.output_dir,
+            self.ss_sheet_mapping
         )
         self.worker.progress.connect(self._on_progress)
         self.worker.finished.connect(self._on_finished)
@@ -496,12 +599,20 @@ class TaxMergePage(QWidget):
             except Exception as db_err:
                 print(f"Database save error (non-fatal): {db_err}")
 
-            # 延迟打开文件夹，避免阻塞 UI 线程
-            QTimer.singleShot(500, lambda: self._open_folder(output_path))
+            # 延迟打开文件夹
+            if self.config.get_auto_open_folder():
+                QTimer.singleShot(500, lambda: self._open_folder(output_path))
+
+            # 显示成功信息
+            success_msg = f"个税申报表已生成：{stats['total']} 条数据"
+            if 'merge_stats' in stats:
+                merge_stats = stats['merge_stats']
+                if merge_stats.get('merged_payroll_records', 0) > 0:
+                    success_msg += f"\n合并了 {merge_stats['merged_payroll_records']} 条重复记录"
 
             InfoBar.success(
                 title="生成成功",
-                content=f"个税申报表已生成：{stats['total']} 条数据\n已自动打开文件所在文件夹。",
+                content=success_msg,
                 orient=Qt.Orientation.Horizontal,
                 isClosable=True,
                 position=InfoBarPosition.TOP,
@@ -520,13 +631,16 @@ class TaxMergePage(QWidget):
 
         InfoBar.error(
             title="生成失败",
-            content=err_msg,
+            content="处理过程中发生错误，请查看详细错误信息",
             orient=Qt.Orientation.Horizontal,
             isClosable=True,
             position=InfoBarPosition.TOP,
             duration=10000,
             parent=self
         )
+        
+        # 显示详细错误对话框
+        QMessageBox.critical(self, "生成失败", err_msg)
 
     @staticmethod
     def _open_folder(file_path):

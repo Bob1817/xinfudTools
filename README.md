@@ -1,11 +1,21 @@
 # HR 数据处理工具集
 
+[![版本](https://img.shields.io/badge/version-1.0.11-blue.svg)](../VERSION.md)
+[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
+[![PyQt6](https://img.shields.io/badge/PyQt6-6.0+-green.svg)](https://www.riverbankcomputing.com/software/pyqt/)
+
 ## 项目概述
 
-一个运行在 Windows 上的本地客户端工具集，用于解决人力资源日常办公中的表格处理问题。实现以下工具：
+一个运行在 Windows 上的本地客户端工具集，用于解决人力资源日常办公中的表格处理问题。
+
+**当前版本**: [v1.0.11](../VERSION.md) | [更新日志](../CHANGELOG.md) | [路线图](../ROADMAP.md)
+
+### 核心功能
 
 - **工具 1**：发薪表 → 个税扣缴申报表（单表模式）
 - **工具 2**：社保数据表 + 发薪表 → 个税扣缴申报表（双表合并模式）
+- **历史记录**：自动保存生成记录，支持查看和管理
+- **自动更新**：支持 Gitee/GitHub 双源自动检查更新
 
 ---
 
@@ -344,7 +354,7 @@ openpyxl 生成带格式 Excel
 
 ### 主窗口
 
-- 标题：`HR 数据处理工具集 v1.0`
+- 标题：`HR 数据处理工具集 v1.0.11`
 - 最小尺寸：960×700
 - 使用 QTabWidget，每个工具一个 Tab
 
@@ -381,3 +391,49 @@ CREATE TABLE merge_records (
     note          TEXT                    -- 备注
 );
 ```
+
+---
+
+## 文档导航
+
+### 📚 用户文档
+- [快速使用指南](docs/guides/快速使用指南.md) - 快速上手
+- [快速操作指南](docs/guides/快速操作指南.md) - 详细操作步骤
+- [Windows安装包构建指南](docs/guides/Windows安装包构建指南.md) - 构建安装包
+- [已知问题与排查指南](docs/guides/已知问题与排查指南.md) - 问题排查
+
+### 📋 版本与更新
+- [版本管理](VERSION.md) - 版本历史和发布流程
+- [更新日志](CHANGELOG.md) - 详细变更记录
+- [产品路线图](ROADMAP.md) - 未来开发计划
+
+### 🔧 开发文档
+- [文档目录](docs/README.md) - 完整文档索引
+- [自动更新功能实现](docs/development/自动更新功能实现.md) - 更新机制设计
+
+---
+
+## 版本历史
+
+### v1.0.11 (2026-04-11)
+- 修复 Windows 下 sys.stdout.flush() 导致的崩溃
+
+### v1.0.10 (2026-04-11)
+- 修复 Windows 启动崩溃 (TypeError)
+
+### v1.0.0 (2026-04-09)
+- 首次发布，包含报税合并、现代化 UI、自动更新、历史记录等核心功能
+
+[查看完整版本历史 →](VERSION.md)
+
+---
+
+## 支持与反馈
+
+- **Gitee**: https://gitee.com/shibo8817/xinfud-tools
+- **GitHub**: https://github.com/Bob1817/xinfudTools
+- **问题反馈**: 请在仓库中提交 Issue
+
+---
+
+**当前版本**: v1.0.11 | **最后更新**: 2026-04-11
